@@ -1,60 +1,54 @@
-# Document RAG Chat Assistant
+# Document RAG Multi-Chat Assistant
 
-A Streamlit-based RAG app using OpenAI, LangChain, LangGraph, and ChromaDB.
+This is a Streamlit app where you can create multiple chats, upload documents per chat, and ask grounded questions using RAG.
 
-## Features
-- Upload documents (`.txt`, `.md`, `.csv`, `.pdf`, `.docx`).
-- Ingest documents into persistent ChromaDB (`./chroma_db`).
-- Content-hash deduplication on ingest (same file content is skipped).
-- Chat UI with `st.chat_input` and in-session chat history.
-- Editable system prompt from sidebar.
-- Single-agent decision flow (LangGraph node) with RAG modes:
+Each chat has:
+- its own message history
+- its own system prompt
+- its own Chroma vector store
+
+So documents from one chat do not leak into another.
+
+## What you can do
+- Create a new chat (with a custom name)
+- Switch between chats
+- Rename or delete a chat
+- Upload docs (`.txt`, `.md`, `.csv`, `.pdf`, `.docx`)
+- Ingest docs into that chat's vector DB
+- Ask questions in chat UI (`st.chat_input`)
+- See retrieved chunks used as evidence
+- Choose RAG behavior:
   - `Auto decide`
   - `Always refer documents`
   - `Do not refer documents`
-- Evidence display: shows retrieved chunks used for each answer.
-- Document management: list indexed docs and delete selected doc from vector DB.
-- Uploader auto-clear after successful ingest.
 
-## Tech Stack
-- OpenAI API (`ChatOpenAI`, `OpenAIEmbeddings`)
+## Tech stack
+- Streamlit
+- OpenAI API
 - LangChain
 - LangGraph
-- Streamlit
 - ChromaDB
-- `python-dotenv`
+- SQLAlchemy
+- python-dotenv
 
 ## Setup
-1. Create and activate a virtual environment:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-2. Install dependencies:
-   ```bash
-   python -m pip install -r requirements.txt
-   ```
-3. Create/update `.env` in project root:
-   ```env
-   OPENAI_API_KEY=your_key_here
-   ```
-
-## Environment Setup
-This app reads environment variables from `.env` using `python-dotenv`.
-
-1. Create `.env` in the project root (`RAG/.env`).
-2. Add your OpenAI key:
-   ```env
-   OPENAI_API_KEY=your_key_here
-   ```
-3. Do not wrap the key in extra quotes unless needed.
-4. Keep `.env` private (already ignored by `.gitignore`).
-
-Optional quick check after activating venv:
 ```bash
-python -c "from dotenv import load_dotenv; load_dotenv('.env'); import os; print(bool(os.getenv('OPENAI_API_KEY')))"
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
-It should print `True`.
+
+Create a `.env` file in the project root:
+
+```env
+OPENAI_API_KEY=your_key_here
+```
+
+Optional (if you want Postgres instead of default SQLite):
+
+```env
+DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/rag_app
+```
 
 ## Run
 ```bash
@@ -62,64 +56,44 @@ source .venv/bin/activate
 python -m streamlit run app.py
 ```
 
-Open the local URL shown by Streamlit (usually `http://localhost:8501`).
-
-## How To Use
-1. In sidebar, upload one or more documents.
-2. Click `Ingest Uploaded Files`.
-3. Choose `RAG Mode`:
-   - `Auto decide`: agent decides if retrieval is needed.
-   - `Always refer documents`: always retrieve from docs.
-   - `Do not refer documents`: no retrieval; answers only from non-doc context.
-4. Ask questions in chat input.
-5. Expand `Retrieved Chunks (Evidence)` under assistant responses to inspect grounding.
-6. Delete documents from sidebar when needed.
-
-## File Structure
+## Project structure
 ```text
 RAG/
-├── app.py              # Streamlit UI + LangGraph single-agent flow + ingestion/retrieval logic
-├── requirements.txt    # Python dependencies
-├── .env                # OpenAI API key (local, ignored)
+├── app.py
+├── requirements.txt
+├── .env
 ├── .gitignore
-├── chroma_db/          # Persistent Chroma vector store
+├── app.db            # default SQLite DB
+├── chroma_db/        # per-chat vector stores
 └── README.md
 ```
 
 ## Architecture
-
-### High-level flow
 ```mermaid
 flowchart TD
-    A[User uploads files] --> B[Parse & chunk text]
-    B --> C[Create embeddings]
-    C --> D[Store chunks in ChromaDB\nmetadata: doc_id, source, chunk_index, content_hash]
+    A[User creates or selects chat] --> B[Load chat state from SQL DB]
+    B --> C[Load chat-specific Chroma DB]
 
-    E[User sends chat question] --> F[Build graph state\nquestion + chat history + mode + filenames]
-    F --> G[Single Agent Node]
-    G --> H{RAG decision}
+    D[User uploads files] --> E[Parse and chunk documents]
+    E --> F[Embed chunks]
+    F --> G[Store in Chroma for active chat]
+    G --> H[Store doc metadata in SQL DB]
 
-    H -->|Always mode| I[Retrieve relevant chunks]
-    H -->|Auto: filename mentioned or LLM says YES| I
-    H -->|Auto: LLM says NO| J[No retrieval]
-    H -->|Do not refer mode| J
+    I[User asks question] --> J[Single agent reads history + mode + file names]
+    J --> K{RAG mode decision}
+    K -->|Always| L[Retrieve chunks]
+    K -->|Never| M[Skip retrieval]
+    K -->|Auto| N[Agent decides yes/no]
+    N -->|Yes| L
+    N -->|No| M
 
-    I --> K[Generate grounded answer + sources]
-    J --> L[Generate direct answer\nor respond unknown when evidence is missing]
-
-    K --> M[Render answer + evidence in chat]
-    L --> M
+    L --> O[Generate grounded answer]
+    M --> P[Generate direct answer or I do not know]
+    O --> Q[Show answer + evidence]
+    P --> Q
+    Q --> R[Persist message + evidence in SQL DB]
 ```
 
-### Agent decisions
-- If question asks which docs/files are uploaded: answer deterministically from indexed filenames.
-- If mode is `Always refer documents`: use retrieval.
-- If mode is `Do not refer documents`: skip retrieval.
-- If mode is `Auto decide`:
-  - force retrieval if user mentions a known filename,
-  - otherwise use LLM yes/no decision for retrieval.
-
 ## Notes
-- Chroma data persists in `./chroma_db`.
-- Deletion removes all chunks for a selected document via `doc_id` metadata.
-- Duplicate content is skipped using SHA-256 content hash.
+- Duplicate uploads are skipped per chat using file-content hash.
+- Deleting a chat also deletes that chat's vector DB folder.
