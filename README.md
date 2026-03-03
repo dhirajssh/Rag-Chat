@@ -105,7 +105,7 @@ flowchart TD
     H -->|Do not refer mode| J
 
     I --> K[Generate grounded answer + sources]
-    J --> L[Generate direct answer\n(or "I don't know" when evidence is missing)]
+    J --> L[Generate direct answer\nor respond unknown when evidence is missing]
 
     K --> M[Render answer + evidence in chat]
     L --> M
