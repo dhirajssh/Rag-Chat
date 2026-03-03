@@ -28,7 +28,7 @@ So documents from one chat do not leak into another.
 - LangChain
 - LangGraph
 - ChromaDB
-- SQLAlchemy
+- PostgreSQL + SQLAlchemy
 - python-dotenv
 
 ## Setup
@@ -42,12 +42,13 @@ Create a `.env` file in the project root:
 
 ```env
 OPENAI_API_KEY=your_key_here
+DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/rag_app
 ```
 
-Optional (if you want Postgres instead of default SQLite):
+Optional local fallback (if you want SQLite while developing):
 
 ```env
-DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/rag_app
+DATABASE_URL=sqlite:///./app.db
 ```
 
 ## Run
@@ -63,7 +64,7 @@ RAG/
 ├── requirements.txt
 ├── .env
 ├── .gitignore
-├── app.db            # default SQLite DB
+├── app.db            # optional SQLite fallback DB
 ├── chroma_db/        # per-chat vector stores
 └── README.md
 ```
